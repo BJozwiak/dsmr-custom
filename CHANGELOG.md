@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0 modified] - 2025-12-11
+### Added
+- **Polish STOEN protocol:** Added decyrption for polish STOEN protocol in ELGAMA 350 Typ G35. 
+  - works with both platform: Arduino and ESP-IDF.
+  - added 'method' option to force proceed methods.
+    - default id 'plain'
+    - method: Polish_STOEN -> force to proceed method 'Polish_STOEN'.
+    In this method also reading data from uart was changed to aster method.
+    Polish meters is programmed by STOEN to send telegram every second.
+    I read all received bytes and store in buffer.
+    After 200ms from last receives I start proceed telegram.
+    This method gives proceed time in range of 5ms on esp32.
+
+
 ## [1.2.0] - 2025-12-03
 
 ### Added

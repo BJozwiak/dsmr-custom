@@ -53,6 +53,8 @@
     #include "util.h"
     #include "crc16.h"
 
+    #include "bajo.h" // Include the bajo.h for decryption utilities.
+
     #include <vector>
     #include <string>
     #include <cmath>
@@ -102,7 +104,8 @@
       uint32_t last_publish_time{0};
     };
 
-    class Dsmr : public Component, public uart::UARTDevice {
+    class Dsmr : public Component, public uart::UARTDevice, public Bajo {
+    friend class Bajo;
      public:
       Dsmr(uart::UARTComponent *uart, bool crc_check);
 

@@ -63,6 +63,7 @@ CONF_MAX_TELEGRAM_LENGTH = "max_telegram_length"
 CONF_CRC_CHECK = "crc_check"
 CONF_GAS_MBUS_ID = "gas_mbus_id"
 CONF_WATER_MBUS_ID = "water_mbus_id"
+CONF_METHOD = "method"
 
 CONF_CUSTOM_OBIS_SENSORS = "custom_obis_sensors"
 CONF_OBIS_CODE = "code"
@@ -116,6 +117,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_CRC_CHECK, default=True): cv.boolean,
         cv.Optional(CONF_GAS_MBUS_ID, default=1): cv.int_range(min=0, max=255),
         cv.Optional(CONF_WATER_MBUS_ID, default=2): cv.int_range(min=0, max=255),
+        cv.Optional(CONF_METHOD, default="plain"): cv.enum({"plain": "plain", "encrypted": "encrypted", "poland_stoen": "poland_stoen", "bajo": "BAJO"}, lower=True ),
         cv.Optional(CONF_CUSTOM_OBIS_SENSORS): cv.ensure_list(CUSTOM_OBIS_SENSOR_SCHEMA),
         cv.Optional(CONF_PLATFORMIO_OPTIONS, default={}): cv.Schema(
             {
@@ -153,6 +155,7 @@ async def to_code(config):
 
     cg.add(var.set_max_telegram_length(config[CONF_MAX_TELEGRAM_LENGTH]))
     cg.add(var.set_receive_timeout(config[CONF_RECEIVE_TIMEOUT].total_milliseconds))
+    cg.add(var.set_method(config[CONF_METHOD]))
 
     if CONF_DECRYPTION_KEY in config:
          cg.add(var.set_decryption_key(config[CONF_DECRYPTION_KEY]))

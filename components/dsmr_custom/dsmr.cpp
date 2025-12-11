@@ -37,6 +37,7 @@
     defined(USE_ESP_IDF) // Guard for supported platforms
 
 #include "dsmr.h"                 // Header for this component's Dsmr class
+#include "bajo.h" // Header for Bajo class
 #include "esphome/core/helpers.h" // For YESNO, etc.
 #include "esphome/core/log.h"
 
@@ -155,30 +156,42 @@ void Dsmr::setup() {
     this->request_pin_->digital_write(false);
     LOG_PIN("  Request Pin: ", this->request_pin_);
   }
+  if (this->method_ == Methods::BAJO) {
+    //ESP_LOGI(TAG, "Initializing BAJO support...");
+
+    this->BAJO_setup();
+  }
 }
+
 
 void Dsmr::loop() {
   if (this->ready_to_request_data_()) {
-    if (this->decryption_key_.empty()) {
-      this->receive_telegram_();
+    if(this->method_ == Methods::BAJO){   // If Poland_STOEN use BAJO method
+      this->BAJO_receive_telegram();
     } else {
-      if (this->crypt_telegram_ == nullptr && !this->decryption_key_.empty()) {
-        ESP_LOGW(TAG, "Decryption key is set, but crypt_telegram_ buffer is "
-                      "null. Allocating now.");
-        this->crypt_telegram_ = new uint8_t[this->max_telegram_len_ + 1];
-        if (this->crypt_telegram_ == nullptr) {
-          ESP_LOGE(TAG, "Failed to allocate crypt_telegram_ buffer in loop! "
-                        "Disabling requests.");
-          this->stop_requesting_data_();
-          return;
-        }
-      }
-      if (this->crypt_telegram_ != nullptr) {
-        this->receive_encrypted_telegram_();
+
+
+      if (this->decryption_key_.empty()) {
+        this->receive_telegram_();
       } else {
-        ESP_LOGE(TAG, "Decryption key set, but crypt_telegram_ buffer is still "
-                      "null. Skipping encrypted receive. Disabling requests.");
-        this->stop_requesting_data_();
+        if (this->crypt_telegram_ == nullptr && !this->decryption_key_.empty()) {
+          ESP_LOGW(TAG, "Decryption key is set, but crypt_telegram_ buffer is "
+                        "null. Allocating now.");
+          this->crypt_telegram_ = new uint8_t[this->max_telegram_len_ + 1];
+          if (this->crypt_telegram_ == nullptr) {
+            ESP_LOGE(TAG, "Failed to allocate crypt_telegram_ buffer in loop! "
+                          "Disabling requests.");
+            this->stop_requesting_data_();
+            return;
+          }
+        }
+        if (this->crypt_telegram_ != nullptr) {
+          this->receive_encrypted_telegram_();
+        } else {
+          ESP_LOGE(TAG, "Decryption key set, but crypt_telegram_ buffer is still "
+                        "null. Skipping encrypted receive. Disabling requests.");
+          this->stop_requesting_data_();
+        }
       }
     }
   }
@@ -327,6 +340,9 @@ void Dsmr::reset_telegram_() {
   }
   this->crypt_bytes_read_ = 0;
   this->crypt_telegram_len_ = 0;
+  if (this->method_ == Methods::BAJO) {
+    this->BAJO_reset_telegram();
+  }
 }
 
 void Dsmr::receive_telegram_() {
@@ -621,12 +637,12 @@ void Dsmr::process_line_for_custom_sensors(const char *line_buffer,
       obis_code_str.end());
 
   if (obis_code_str.empty()) {
-    ESP_LOGVV(TAG_CUSTOM_SENSORS, "Empty OBIS code extracted from line '%s'.",
+    ESP_LOGV(TAG_CUSTOM_SENSORS, "Empty OBIS code extracted from line '%s'.",
               line_str.c_str());
     return;
   }
 
-  ESP_LOGVV(TAG_CUSTOM_SENSORS,
+  ESP_LOGV(TAG_CUSTOM_SENSORS,
             "Processing line for custom sensors: OBIS '%s', ValuePart '%s'",
             obis_code_str.c_str(), value_part_str.c_str());
 
@@ -705,23 +721,23 @@ bool Dsmr::parse_telegram() {
              this->max_telegram_len_);
   }
 
-  ::dsmr::ParseResult<void> standard_parse_result = ::dsmr::P1Parser::parse(
-      &data_from_standard_parser, this->telegram_, this->bytes_read_,
-      false /* unknown_error */, this->crc_check_);
+//  ::dsmr::ParseResult<void> standard_parse_result = ::dsmr::P1Parser::parse(
+//      &data_from_standard_parser, this->telegram_, this->bytes_read_,
+//      false /* unknown_error */, this->crc_check_);
 
-  if (standard_parse_result
-          .err_) { // CORRECTED: Access err_ (from ver4_parser_lib_parser.h
-                   // via ver3_parser_lib_util.h)
-    auto err_str = standard_parse_result.fullError(
-        this->telegram_, this->telegram_ + this->bytes_read_);
-    ESP_LOGW(TAG, "DSMR P1 vendored parser error: %s", err_str.c_str());
-    this->status_set_warning();
-  } else {
-    ESP_LOGD(TAG, "Successfully parsed P1 telegram using vendored parser for "
-                  "standard fields.");
-    this->status_clear_warning();
-    this->publish_sensors(data_from_standard_parser);
-  }
+//  if (standard_parse_result
+//          .err_) { // CORRECTED: Access err_ (from ver4_parser_lib_parser.h
+//                   // via ver3_parser_lib_util.h)
+//    auto err_str = standard_parse_result.fullError(
+//        this->telegram_, this->telegram_ + this->bytes_read_);
+//    ESP_LOGW(TAG, "DSMR P1 vendored parser error: %s", err_str.c_str());
+//    this->status_set_warning();
+//  } else {
+//    ESP_LOGD(TAG, "Successfully parsed P1 telegram using vendored parser for "
+//                  "standard fields.");
+//    this->status_clear_warning();
+//    this->publish_sensors(data_from_standard_parser);
+//  }
 
   ESP_LOGV(TAG, "Processing telegram for custom OBIS sensors line by line.");
   const char *current_line_start = this->telegram_;
@@ -775,7 +791,8 @@ bool Dsmr::parse_telegram() {
     ESP_LOGV(TAG, "Published full telegram to s_telegram_ text_sensor.");
   }
   this->stop_requesting_data_();
-  return !standard_parse_result.err_; // CORRECTED: Access err_
+//  return !standard_parse_result.err_; // CORRECTED: Access err_
+  return true;
 }
 
 void Dsmr::publish_sensors(MyData &data) {

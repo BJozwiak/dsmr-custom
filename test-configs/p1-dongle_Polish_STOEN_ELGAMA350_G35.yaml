@@ -1,0 +1,355 @@
+substitutions:
+  name: P1_Dongle
+ 
+esphome:
+  name: p1-dongle
+  
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+    #type: esp-idf
+  cpu_frequency: 240MHz
+
+web_server:
+  port: 80
+  version: 2
+  include_internal: True
+  ota: False
+
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+ 
+ota:
+  - platform: esphome
+    password: "################################"
+
+wifi:
+  ssid: !secret YOUR_WIFI_SSID
+  password: !secret YOUR_WIFI_PASSWORD
+  fast_connect: on
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "P1_Dongle Fallback Hotspot"
+    password: "abcd1234"
+
+time:
+  - platform: homeassistant
+    id: esptime
+    timezone: Europe/Warsaw
+
+
+sensor:
+  - platform: uptime
+    name: "${name} Uptime"
+  - platform: wifi_signal
+    name: "${name} Wi-Fi Signal"
+    update_interval: 60s
+
+# DSMR Custom sensors mapped to Home Assistant sensors for display
+  - platform: homeassistant
+    internal: True
+    id: p1_dongle_1_8_0_eon_total_energy_import
+    entity_id: sensor.p1_dongle_1_8_0_eon_total_energy_import
+  - platform: homeassistant
+    internal: True
+    id: p1_dongle_1_8_1_eon_szczyt_energy_import
+    entity_id: sensor.p1_dongle_1_8_1_eon_szczyt_energy_import
+  - platform: homeassistant
+    internal: True
+    id: p1_dongle_1_8_2_eon_pozaszczyt_energy_import
+    entity_id: sensor.p1_dongle_1_8_2_eon_pozaszczyt_energy_import
+
+  - platform: homeassistant
+    internal: True
+    id: p1_dongle_2_8_0_eon_total_energy_export
+    entity_id: sensor.p1_dongle_2_8_0_eon_total_energy_export
+  - platform: homeassistant
+    internal: True
+    id: p1_dongle_2_8_1_eon_szczyt_energy_export
+    entity_id: sensor.p1_dongle_2_8_1_eon_szczyt_energy_export
+  - platform: homeassistant
+    internal: True
+    id: p1_dongle_2_8_2_eon_pozaszczyt_energy_export
+    entity_id: sensor.p1_dongle_2_8_2_eon_pozaszczyt_energy_export
+
+binary_sensor:       
+  - platform: status
+    name: ${name}_status
+    id: ${name}_status
+    internal: True
+
+uart:
+  id: uart_0
+#  tx_pin: 
+#    number: GPIO26
+#    mode: OUTPUT
+#    inverted: False
+  rx_pin: 
+    number: GPIO25
+    mode: INPUT_PULLUP
+    inverted: true
+  rx_buffer_size: 4000
+  baud_rate: 115200
+
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/BJozwiak/dsmr-custom.git
+      ref: BAJO_STOEN
+    components: [ dsmr_custom ]
+
+
+dsmr_custom:
+  id: dsmr_hub
+  uart_id: uart_0
+  decryption_key: !secret LeftEnergyMeter_EK
+  method: Poland_STOEN
+#  request_pin: GPIO27
+#  request_interval: 10s
+  max_telegram_length: 1700
+  crc_check: false
+#  receive_timeout: "2000ms"
+
+  custom_obis_sensors:
+    - code: "0-0:1.0.0"  
+      name: "1.0.0 EON Timestamp"
+      type: text_sensor      
+      internal: false
+    - code: "1-0:1.8.0"  # The OBIS code string from your meter's telegram
+      name: "1.8.0 EON Total Energy Import"
+      type: sensor      # "sensor" for numeric, "text_sensor" for text
+      # All standard ESPHome sensor parameters are supported:
+      internal: false
+      unit_of_measurement: "kWh"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+      icon: "mdi:home-import-outline"
+    - code: "1-0:1.8.1"  
+      name: "1.8.1 EON Szczyt Energy Import"
+      type: sensor      
+      internal: false
+      unit_of_measurement: "kWh"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+      icon: "mdi:home-import-outline"
+    - code: "1-0:1.8.2"  
+      name: "1.8.2 EON PozaSzczyt Energy Import"
+      type: sensor      
+      internal: false
+      unit_of_measurement: "kWh"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+      icon: "mdi:home-import-outline"
+    - code: "1-0:2.8.0"  # The OBIS code string from your meter's telegram
+      name: "2.8.0 EON Total Energy Export"
+      type: sensor      # "sensor" for numeric, "text_sensor" for text
+      internal: false
+      unit_of_measurement: "kWh"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+      icon: "mdi:home-import-outline"
+    - code: "1-0:2.8.1"  
+      name: "2.8.1 EON Szczyt Energy Export"
+      type: sensor      
+      internal: false
+      unit_of_measurement: "kWh"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+      icon: "mdi:home-import-outline"
+    - code: "1-0:2.8.2"  
+      name: "2.8.2 EON PozaSzczyt Energy Export"
+      type: sensor      
+      internal: false
+      unit_of_measurement: "kWh"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+      icon: "mdi:home-import-outline"
+    - code: "1-0:1.7.0"  
+      name: "1.7.0 EON Actual Energy Import"
+      type: sensor      
+      internal: false
+      unit_of_measurement: "kW"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+      icon: "mdi:home-import-outline"
+    - code: "1-0:2.7.0"  
+      name: "2.7.0 EON Actual Energy Export"
+      type: sensor      
+      internal: false
+      unit_of_measurement: "kW"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+      icon: "mdi:home-import-outline"
+
+switch:
+  - id: wyjscie
+    internal: True
+    platform: gpio
+    pin: 
+      number: GPIO27
+    restore_mode: ALWAYS_ON
+#    on_turn_on: 
+#      then:
+#        - delay: 
+#            1s
+#        - switch.turn_off: wyjscie
+
+text_sensor:
+  - platform: dsmr_custom
+    dsmr_custom_hub_id: dsmr_hub
+
+    # This confirms a connection, but the magic happens below.
+    identification:
+      name: "P1 Telegram Header"
+    
+    # This captures the full telegram internally and uses a lightweight
+    # trigger to print it to the logs without crashing the device.
+    telegram:
+      name: "P1 Telegram"
+      internal: false
+#      on_value:
+#        - logger.log:
+#            level: INFO
+#            tag: "telegram_dump"
+#            format: "--- FULL TELEGRAM RECEIVED ---\n%s\n-----------------------------"
+#            args: [x.c_str()]
+
+  - platform: homeassistant
+    internal: True
+    id: p1_dongle_1_0_0_eon_timestamp
+    entity_id: sensor.p1_dongle_1_0_0_eon_timestamp
+
+
+#Rest configuration for display
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO19
+
+color:
+  - id: my_red
+    red: 100%
+    green: 0%
+    blue: 0%
+  - id: my_yellow
+    red: 100%
+    green: 100%
+    blue: 0%
+  - id: my_green
+    red: 0%
+    green: 100%
+    blue: 0%
+  - id: my_blue
+    red: 0%
+    green: 0%
+    blue: 100%
+  - id: my_gray
+    red: 50%
+    green: 50%
+    blue: 50%
+  - id: my_white
+    red: 100%
+    green: 100%
+    blue: 100%
+
+font:
+  - file: "gfonts://Roboto"
+    id: font10
+    size: 10
+  - file: "gfonts://Roboto"
+    id: font12
+    size: 12
+  - file: "gfonts://Roboto"
+    id: font14
+    size: 14
+  - file: "gfonts://Roboto"
+    id: font16
+    size: 16
+  - file: "gfonts://Roboto"
+    id: font18
+    size: 18
+  - file: "gfonts://Roboto"
+    id: font20
+    size: 20
+  - file: "gfonts://Roboto"
+    id: font24
+    size: 24
+  
+  - file: "gfonts://Roboto"
+    id: helvetica_48
+    size: 48
+  - file: "gfonts://Roboto"
+    id: helvetica_24
+    size: 24
+  - file: "gfonts://Roboto"
+    id: helvetica_12
+    size: 12
+  - file: "gfonts://Roboto"
+    id: helvetica_14
+    size: 14
+  - file: "gfonts://Roboto"
+    id: helvetica_16
+    size: 16
+
+display:
+  - platform: st7789v
+    model: TTGO TDisplay 135x240
+    backlight_pin: GPIO04
+    cs_pin: 
+      number: GPIO05
+      ignore_strapping_warning: true
+    dc_pin: GPIO16
+    reset_pin: GPIO23
+    rotation: 90
+    update_interval: 10s
+    lambda: |-
+      it.rectangle(0,  0, it.get_width(), it.get_height(), id(my_blue));
+      it.rectangle(0, 20, it.get_width(), it.get_height(), id(my_blue));   // header bar
+
+      it.rectangle(0,  0, it.get_width(), it.get_height(), id(my_blue));
+      it.rectangle(0, 20, it.get_width(), it.get_height(), id(my_blue));   // header bar
+
+      it.print(2, 3, id(helvetica_12), id(my_yellow), TextAlign::TOP_LEFT, "${name}");
+      it.strftime((it.get_width() / 2), 1, id(helvetica_16), id(my_gray), TextAlign::TOP_CENTER, "%Y-%m-%d %H:%M:%S", id(esptime).now());
+
+      if (id(${name}_status).state) {
+        it.print(235, 3, id(helvetica_12), id(my_green), TextAlign::TOP_RIGHT, "Online");
+      } else {
+        it.print(235, 3, id(helvetica_12), id(my_red), TextAlign::TOP_RIGHT, "Offline");
+      }
+
+      it.printf(2, 50 , id(font24), id(my_gray), TextAlign::BOTTOM_LEFT, "TS:");
+      it.printf(40, 50 , id(font24), id(my_white), TextAlign::BOTTOM_LEFT, "%s", id(p1_dongle_1_0_0_eon_timestamp).state.c_str());
+
+      it.printf(2, 95 , id(font16), id(my_gray), TextAlign::BOTTOM_LEFT, "1.8.0:");
+      //it.printf(120, 95 , id(font16), id(my_gray), TextAlign::BOTTOM_RIGHT, "kWh");                        
+      it.printf(115, 95 , id(font20), id(my_white), TextAlign::BOTTOM_RIGHT, "%.2f", id(p1_dongle_1_8_0_eon_total_energy_import).state);            
+      it.printf(2, 115 , id(font16), id(my_gray), TextAlign::BOTTOM_LEFT, "1.8.1:");
+      //it.printf(120, 115 , id(font16), id(my_gray), TextAlign::BOTTOM_RIGHT, "kWh");          
+      it.printf(115, 115 , id(font20), id(my_white), TextAlign::BOTTOM_RIGHT, "%.2f", id(p1_dongle_1_8_1_eon_szczyt_energy_import).state);            
+      it.printf(2, 135 , id(font16), id(my_gray), TextAlign::BOTTOM_LEFT, "1.8.2:");
+      //it.printf(120, 135 , id(font16), id(my_gray), TextAlign::BOTTOM_RIGHT, "kWh");            
+      it.printf(115, 135 , id(font20), id(my_white), TextAlign::BOTTOM_RIGHT, "%.2f", id(p1_dongle_1_8_2_eon_pozaszczyt_energy_import).state);            
+
+      it.printf(120, 95 , id(font16), id(my_gray), TextAlign::BOTTOM_LEFT, "2.8.0:");
+      it.printf(235, 95 , id(font16), id(my_gray), TextAlign::BOTTOM_RIGHT, "kWh");                        
+      it.printf(220, 95 , id(font20), id(my_white), TextAlign::BOTTOM_RIGHT, "%.2f", id(p1_dongle_2_8_0_eon_total_energy_export).state);            
+      it.printf(120, 115 , id(font16), id(my_gray), TextAlign::BOTTOM_LEFT, "2.8.1:");
+      it.printf(235, 115 , id(font16), id(my_gray), TextAlign::BOTTOM_RIGHT, "kWh");          
+      it.printf(220, 115 , id(font20), id(my_white), TextAlign::BOTTOM_RIGHT, "%.2f", id(p1_dongle_2_8_1_eon_szczyt_energy_export).state);            
+      it.printf(120, 135 , id(font16), id(my_gray), TextAlign::BOTTOM_LEFT, "2.8.2:");
+      it.printf(235, 135 , id(font16), id(my_gray), TextAlign::BOTTOM_RIGHT, "kWh");            
+      it.printf(220, 135 , id(font20), id(my_white), TextAlign::BOTTOM_RIGHT, "%.2f", id(p1_dongle_2_8_2_eon_pozaszczyt_energy_export).state);           

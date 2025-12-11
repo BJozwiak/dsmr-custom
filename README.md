@@ -1,6 +1,8 @@
-# dsmr-custom - Enhanced DSMR P1 Component for ESPHome
+# Modified dsmr-custom from nikopaulanne/dsmr-custom:main - Enhanced DSMR P1 Component for ESPHome
 
-**Version:** 1.0.2
+**Forked version:** 1.0.2
+
+**Modification:** Work with Polish STOEN DSMR P1 protocol
 
 **ESPHome Compatibility:** 2025.5.x or newer
 
