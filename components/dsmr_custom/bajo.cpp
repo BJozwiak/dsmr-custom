@@ -354,7 +354,7 @@ void Bajo::BAJO_process_telegram() {
             d->telegram_[d->bytes_read_+2] = '\0';
             d->bytes_read_ +=2;
 
-            BAJO_send_udp_telegram(d->telegram_, d->bytes_read_);   //For debuging I sent telegram to my host PC
+            //BAJO_send_udp_telegram(d->telegram_, d->bytes_read_);   //For debuging I sent telegram to my host PC
     
 
             //ESP_LOGI(TAG, "Telegram ->%s<- bytes %d", d->telegram_, d->bytes_read_);	
