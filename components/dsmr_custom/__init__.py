@@ -48,6 +48,7 @@ from esphome.const import (
     CONF_FORCE_UPDATE,
     CONF_PLATFORMIO_OPTIONS,
     CONF_RECEIVE_TIMEOUT,
+    CONF_PORT,
 )
 
 DOMAIN = "dsmr_custom"
@@ -64,6 +65,30 @@ CONF_CRC_CHECK = "crc_check"
 CONF_GAS_MBUS_ID = "gas_mbus_id"
 CONF_WATER_MBUS_ID = "water_mbus_id"
 CONF_METHOD = "method"
+CONF_GCM_TAG_CHECK = "gcm_tag_check"
+CONF_DEBUG_UDP_TARGET = "debug_udp_target"
+CONF_DEBUG_UDP_HOST = "host"
+
+METHODS = {
+    "plain": "plain",
+    "encrypted": "encrypted",
+    "poland_stoen": "poland_stoen",
+    # Legacy alias kept so existing configurations keep working.
+    "bajo": "poland_stoen",
+}
+
+
+def _validate_debug_udp_target(value):
+    """Validate a debugging target given as "<ipv4>:<port>"."""
+    value = cv.string_strict(value)
+    host, _, port = value.rpartition(":")
+    if not host or not port:
+        raise cv.Invalid(
+            f"'{CONF_DEBUG_UDP_TARGET}' must be given as '<ipv4 address>:<port>', got '{value}'."
+        )
+    host = cv.ipv4address(host)
+    port = cv.port(port)
+    return {CONF_DEBUG_UDP_HOST: str(host), CONF_PORT: port}
 
 CONF_CUSTOM_OBIS_SENSORS = "custom_obis_sensors"
 CONF_OBIS_CODE = "code"
@@ -117,7 +142,11 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_CRC_CHECK, default=True): cv.boolean,
         cv.Optional(CONF_GAS_MBUS_ID, default=1): cv.int_range(min=0, max=255),
         cv.Optional(CONF_WATER_MBUS_ID, default=2): cv.int_range(min=0, max=255),
-        cv.Optional(CONF_METHOD, default="plain"): cv.enum({"plain": "plain", "encrypted": "encrypted", "poland_stoen": "poland_stoen", "bajo": "BAJO"}, lower=True ),
+        cv.Optional(CONF_METHOD, default="plain"): cv.enum(METHODS, lower=True),
+        cv.Optional(CONF_GCM_TAG_CHECK, default=True): cv.boolean,
+        cv.Optional(CONF_DEBUG_UDP_TARGET): cv.All(
+            cv.only_on_esp32, _validate_debug_udp_target
+        ),
         cv.Optional(CONF_CUSTOM_OBIS_SENSORS): cv.ensure_list(CUSTOM_OBIS_SENSOR_SCHEMA),
         cv.Optional(CONF_PLATFORMIO_OPTIONS, default={}): cv.Schema(
             {
@@ -157,6 +186,11 @@ async def to_code(config):
     cg.add(var.set_max_telegram_length(config[CONF_MAX_TELEGRAM_LENGTH]))
     cg.add(var.set_receive_timeout(config[CONF_RECEIVE_TIMEOUT].total_milliseconds))
     cg.add(var.set_method(config[CONF_METHOD]))
+    cg.add(var.set_gcm_tag_check(config[CONF_GCM_TAG_CHECK]))
+
+    if CONF_DEBUG_UDP_TARGET in config:
+        target = config[CONF_DEBUG_UDP_TARGET]
+        cg.add(var.set_debug_udp_target(target[CONF_DEBUG_UDP_HOST], target[CONF_PORT]))
 
     if CONF_DECRYPTION_KEY in config:
          cg.add(var.set_decryption_key(config[CONF_DECRYPTION_KEY]))

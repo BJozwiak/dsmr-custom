@@ -156,9 +156,7 @@ void Dsmr::setup() {
     this->request_pin_->digital_write(false);
     LOG_PIN("  Request Pin: ", this->request_pin_);
   }
-  if (this->method_ == Methods::BAJO) {
-    //ESP_LOGI(TAG, "Initializing BAJO support...");
-
+  if (this->method_ == Method::POLAND_STOEN) {
     this->BAJO_setup();
   }
 }
@@ -166,11 +164,10 @@ void Dsmr::setup() {
 
 void Dsmr::loop() {
   if (this->ready_to_request_data_()) {
-    if(this->method_ == Methods::BAJO){   // If Poland_STOEN use BAJO method
+    if (this->method_ == Method::POLAND_STOEN) {
+      // The STOEN dialect needs its own buffered receive path.
       this->BAJO_receive_telegram();
     } else {
-
-
       if (this->decryption_key_.empty()) {
         this->receive_telegram_();
       } else {
@@ -340,7 +337,7 @@ void Dsmr::reset_telegram_() {
   }
   this->crypt_bytes_read_ = 0;
   this->crypt_telegram_len_ = 0;
-  if (this->method_ == Methods::BAJO) {
+  if (this->method_ == Method::POLAND_STOEN) {
     this->BAJO_reset_telegram();
   }
 }
@@ -853,6 +850,18 @@ void Dsmr::dump_config() {
     ESP_LOGCONFIG(TAG, "  Decryption: Enabled (key is set)");
   } else {
     ESP_LOGCONFIG(TAG, "  Decryption: Disabled (no key set)");
+  }
+  switch (this->method_) {
+  case Method::POLAND_STOEN:
+    ESP_LOGCONFIG(TAG, "  Method: poland_stoen (ELGAMA G350 / typ G35)");
+    ESP_LOGCONFIG(TAG, "  GCM Tag Check: %s", YESNO(this->gcm_tag_check_));
+    break;
+  case Method::ENCRYPTED:
+    ESP_LOGCONFIG(TAG, "  Method: encrypted");
+    break;
+  default:
+    ESP_LOGCONFIG(TAG, "  Method: plain");
+    break;
   }
   ESP_LOGCONFIG(TAG, "  Standard Sensors (pointers; null if overridden by "
                      "custom or not configured):");
