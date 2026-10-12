@@ -415,6 +415,11 @@ bool Bajo::BAJO_decrypt_telegram() {
     return false;
   }
 
+  if (this->body_bytes_ < 2) {
+    ESP_LOGE(TAG, "Encrypted body holds only %zu bytes.", this->body_bytes_);
+    return false;
+  }
+
   size_t system_title_length = 0;
   if (this->body_[0] == 0x00) {
     // 0x00 means an empty system title
@@ -431,6 +436,14 @@ bool Bajo::BAJO_decrypt_telegram() {
   if (this->body_bytes_ < system_title_length + 8) {
     ESP_LOGE(TAG, "Encrypted body too short (%zu bytes) for a %zu byte system title.", this->body_bytes_,
              system_title_length);
+    return false;
+  }
+
+  // The two byte length that the arithmetic below relies on is introduced by
+  // 0x82; any other encoding would put the length somewhere else.
+  if (this->body_[system_title_length] != 0x82) {
+    ESP_LOGE(TAG, "Expected a 0x82 length marker after the system title, got 0x%02X.",
+             this->body_[system_title_length]);
     return false;
   }
 
