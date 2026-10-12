@@ -74,7 +74,16 @@ working device configuration including a display.
   the main loop.
 * **Nothing at all** - set `logger: level: VERY_VERBOSE` for the
   `BAJO dsmr_custom` tag, or dump the raw telegram to a PC with
-  `debug_udp_target` (see below) and inspect it with `nc -ul 37008`.
+  `debug_udp_target` (see below), catch it with `nc -ul 37008 > telegram.bin`
+  and take it apart offline:
+
+  ```
+  python3 scripts/analyze-stoen-telegram.py telegram.bin --key-file key.txt
+  ```
+
+  The script mirrors the frame arithmetic of the component, so it prints the
+  DLMS wrapper fields, the decrypted telegram and which additional
+  authenticated data (if any) reproduces the meter's AES-GCM tag.
 
 ## Framework Support
 
