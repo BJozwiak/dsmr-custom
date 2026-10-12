@@ -703,6 +703,7 @@ void Dsmr::process_line_for_custom_sensors(const char *line_buffer,
 
 bool Dsmr::parse_telegram() {
   MyData data_from_standard_parser;
+  (void) data_from_standard_parser;
   ESP_LOGV(
       TAG,
       "Attempting to parse P1 telegram of %zu bytes using vendored parser.",
@@ -718,23 +719,31 @@ bool Dsmr::parse_telegram() {
              this->max_telegram_len_);
   }
 
-//  ::dsmr::ParseResult<void> standard_parse_result = ::dsmr::P1Parser::parse(
-//      &data_from_standard_parser, this->telegram_, this->bytes_read_,
-//      false /* unknown_error */, this->crc_check_);
+  // The STOEN telegram is reassembled from a decrypted body and a CRC that
+  // covers the *encrypted* frame, so the vendored P1 parser would only ever
+  // report a CRC error for it. Standard fields are not published for that
+  // dialect; its values come from custom_obis_sensors below.
+  bool standard_parse_ok = true;
+  if (this->method_ != Method::POLAND_STOEN) {
+    ::dsmr::ParseResult<void> standard_parse_result = ::dsmr::P1Parser::parse(
+        &data_from_standard_parser, this->telegram_, this->bytes_read_,
+        false /* unknown_error */, this->crc_check_);
 
-//  if (standard_parse_result
-//          .err_) { // CORRECTED: Access err_ (from ver4_parser_lib_parser.h
-//                   // via ver3_parser_lib_util.h)
-//    auto err_str = standard_parse_result.fullError(
-//        this->telegram_, this->telegram_ + this->bytes_read_);
-//    ESP_LOGW(TAG, "DSMR P1 vendored parser error: %s", err_str.c_str());
-//    this->status_set_warning();
-//  } else {
-//    ESP_LOGD(TAG, "Successfully parsed P1 telegram using vendored parser for "
-//                  "standard fields.");
-//    this->status_clear_warning();
-//    this->publish_sensors(data_from_standard_parser);
-//  }
+    if (standard_parse_result.err_) {
+      auto err_str = standard_parse_result.fullError(
+          this->telegram_, this->telegram_ + this->bytes_read_);
+      ESP_LOGW(TAG, "DSMR P1 vendored parser error: %s", err_str.c_str());
+      this->status_set_warning();
+      standard_parse_ok = false;
+    } else {
+      ESP_LOGD(TAG, "Successfully parsed P1 telegram using vendored parser for "
+                    "standard fields.");
+      this->status_clear_warning();
+      this->publish_sensors(data_from_standard_parser);
+    }
+  } else {
+    ESP_LOGV(TAG, "Method poland_stoen: skipping the vendored P1 parser.");
+  }
 
   ESP_LOGV(TAG, "Processing telegram for custom OBIS sensors line by line.");
   const char *current_line_start = this->telegram_;
@@ -788,8 +797,7 @@ bool Dsmr::parse_telegram() {
     ESP_LOGV(TAG, "Published full telegram to s_telegram_ text_sensor.");
   }
   this->stop_requesting_data_();
-//  return !standard_parse_result.err_; // CORRECTED: Access err_
-  return true;
+  return standard_parse_ok;
 }
 
 void Dsmr::publish_sensors(MyData &data) {
