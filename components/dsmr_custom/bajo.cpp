@@ -540,8 +540,8 @@ bool Bajo::BAJO_decrypt_telegram() {
                  "GCM tag does not match any known layout of the additional data (security byte 0x%02X); "
                  "telegrams are decrypted but NOT authenticated.",
                  security_byte);
-        ESP_LOGW(TAG, "This is expected for a meter handed out with a decryption key only. If the operator also "
-                      "gave you an authentication key, set 'authentication_key' to verify the tag.");
+        ESP_LOGW(TAG, "This is expected when the telegram is read with the decryption key alone. Set "
+                      "'authentication_key' to also try 'security byte || authentication key'.");
       } else {
         // Keep the plaintext of this telegram and probe again on the next one.
         ESP_LOGD(TAG, "GCM tag did not match any candidate, %u probe(s) left.", this->aad_probes_left_);

@@ -1,12 +1,100 @@
 # Modified dsmr-custom from nikopaulanne/dsmr-custom:main - Enhanced DSMR P1 Component for ESPHome
 
-**Forked version:** 1.0.2
+**Forked version:** 1.0.2 (upstream) - **this branch:** 1.2.1-stoen
 
 **Modification:** Work with Polish STOEN DSMR P1 protocol
 
 **ESPHome Compatibility:** 2025.5.x or newer (including 2026.1+)
 
 **Targets:** ESP8266 and ESP32 on Arduino, ESP32 family on ESP-IDF
+
+## What this fork changes
+
+On top of `nikopaulanne/dsmr-custom:main` this branch adds support for the
+Polish STOEN dialect and fixes what that support originally broke.
+
+**Added**
+
+* `method:` selects how a telegram is read and decoded - `plain`, `encrypted`
+  or `poland_stoen` (alias `bajo`). The STOEN path drains the UART into one
+  buffer and parses it once the line goes quiet, instead of reading byte by
+  byte, because the meter pushes a whole telegram every second. Parsing takes
+  about 5 ms on an ESP32.
+* AES-GCM decryption of the STOEN body, with the frame layout derived from the
+  DLMS wrapper rather than hardcoded: both an explicit 8 byte system title
+  (`0xDB`) and an empty one (`0x00`) are handled, and the ciphertext length
+  comes from `LEN_INFO` minus the security byte, the frame counter and the tag.
+* `authentication_key:` - optional, see *Keys* below.
+* `debug_udp_target: "<ip>:<port>"` - mirror every raw and decrypted telegram
+  to a host over UDP, for reverse engineering a dialect the ESPHome logger
+  cannot show. ESP32 only; on ESP8266 no socket code is compiled at all.
+* `scripts/analyze-stoen-telegram.py` - takes a captured telegram apart
+  offline: DLMS fields, decrypted contents, and which additional
+  authenticated data reproduces the meter's AES-GCM tag.
+* Compile tests for the STOEN path on ESP8266/Arduino, ESP32/Arduino and
+  ESP32/ESP-IDF, in the CI matrix.
+
+**Fixed**
+
+* Builds on ESPHome 2026.1 and newer. `CORE.using_esp_idf` was removed from
+  ESPHome's core, so code generation aborted before compiling anything.
+* Standard DSMR sensors publish again. The vendored P1 parser had been
+  commented out wholesale, which left *every* user of the component with
+  `custom_obis_sensors` only. It is skipped just for `method: poland_stoen`,
+  whose footer CRC covers the encrypted frame and can never match.
+* The STOEN path no longer parses frames it failed to decrypt. Malformed
+  frames, a truncated body, a `LEN_INFO` smaller than its own overhead, a
+  misplaced length marker and oversized plaintext each discard the telegram
+  and raise the component's warning status, instead of being logged and then
+  parsed anyway.
+* AES-GCM frame arithmetic. The tag length was hardcoded to 0, which put the
+  tag pointer one byte past the end of the body - a 12 byte out-of-bounds
+  read - and made the tag check verify nothing. On ESP-IDF that same zero
+  length made MbedTLS reject every frame, so the STOEN path never decrypted
+  there at all.
+* No more buffer overruns in the STOEN path: the receive buffer was a fixed
+  2000 bytes written without a bounds check and is now sized from
+  `max_telegram_length`; the telegram scanner read up to six bytes past the
+  received data and consumed eight bytes for a seven byte false footer,
+  dropping a body byte; the identification line was `strcpy`-ed into a 21 byte
+  buffer; and reassembling the telegram could write past
+  `max_telegram_length`.
+* A failing debug socket no longer calls `vTaskDelete(NULL)`, which killed the
+  ESPHome main task. The two hardcoded LAN addresses are gone with it.
+* `method: encrypted` is no longer silently ignored - the YAML spelling did not
+  match the lookup table on the C++ side, so it fell back to `plain`.
+* The quiet time that ends a telegram follows the existing `receive_timeout`
+  option instead of a hardcoded 200 ms.
+
+### Verified on
+
+| Target | Framework | Configuration | Status |
+|---|---|---|---|
+| ESP32 | ESP-IDF | STOEN, real meter | **running on an ELGAMA G350 / typ G35** |
+| ESP32 | Arduino | STOEN, real meter | earlier revision of this branch ran here for months; this revision is build-tested only |
+| ESP8266 `d1_mini` | Arduino | `test-stoen-arduino-esp8266.yaml` | builds and links; not yet run on a meter |
+| ESP32 | Arduino | `test-stoen-arduino-esp32.yaml` | builds and links |
+| ESP32 | ESP-IDF | `test-stoen-espidf-esp32.yaml` | builds and links |
+| ESP8266 `d1_mini` | Arduino | `test-arduino-esp8266.yaml` (plain DSMR) | builds and links |
+| ESP32 | ESP-IDF | `test-espidf-esp32.yaml` (plain DSMR) | builds and links |
+| ESP32-C6 | ESP-IDF | `test-espidf-esp32c6.yaml` (plain DSMR) | builds and links |
+
+Everything above is built with ESPHome 2026.9.1. On ESP8266 the STOEN buffers
+take about 7 kB of heap at `max_telegram_length: 1700`, on top of 31 kB of
+static RAM, so leave room for whatever else the device runs.
+
+### Keys
+
+STOEN hands out two keys, but only the decryption key takes part in reading
+the telegram: the frame as the meter sends it carries no field that would make
+the second one necessary. That is why an authenticated frame (security byte
+`0x30`) decrypts correctly while its AES-GCM tag cannot be reproduced - DLMS
+computes that tag over `security byte || authentication key`. The component
+probes the layouts it knows on the first five telegrams and then says, once,
+that telegrams are decrypted but not authenticated. Setting
+`authentication_key` makes it try `security byte || authentication key` as
+well, and if that reproduces the tag the component authenticates every
+telegram from then on.
 
 ## Polish STOEN meters (ELGAMA G350 / typ G35)
 
@@ -55,15 +143,14 @@ working device configuration including a display.
 
 ### Troubleshooting the STOEN path
 
-* **`telegrams are decrypted but NOT authenticated`** - normal for a meter that
-  was handed out with a decryption key only, which is the case for STOEN. The
-  AES-GCM tag covers the ciphertext plus additional authenticated data, and
-  DLMS defines that as `security byte || authentication key`; with no
-  authentication key the tag cannot be reproduced. The component probes the
-  layouts it knows on the first five telegrams, and once none of them matches it
-  keeps decrypting and says so once. If your operator did give you an
-  authentication key, set `authentication_key` and the tag is verified on every
-  telegram instead.
+* **`telegrams are decrypted but NOT authenticated`** - expected on a STOEN
+  meter, see *Keys* above. The AES-GCM tag covers the ciphertext plus
+  additional authenticated data, which DLMS defines as
+  `security byte || authentication key`; the telegram itself is read with the
+  decryption key alone, so the tag stays unverifiable. The component probes the
+  layouts it knows on the first five telegrams and, once none of them matches,
+  keeps decrypting and says so once. Setting `authentication_key` adds
+  `security byte || authentication key` to the candidates.
 * **`GCM tag verifies with additional data = ...`** - the layout was recognised;
   from that point on a telegram with a bad tag is rejected.
 * **`Security byte 0x.. has no authentication tag`** - the meter uses a DLMS
