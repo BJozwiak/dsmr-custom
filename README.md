@@ -55,15 +55,20 @@ working device configuration including a display.
 
 ### Troubleshooting the STOEN path
 
-* **`Decryption failed: GCM tag mismatch`** - the body decrypts but does not
-  authenticate. Some meters authenticate over an authentication key, where the
-  additional data is `security byte || AK`; that is not implemented yet. Set
-  `gcm_tag_check: false` to accept the plaintext anyway (Arduino only; the
-  ESP-IDF backend always verifies) and please report the security byte from the
-  log so proper support can be added.
-* **`Security byte 0x.. is not 'encrypted + authenticated'`** - the meter uses
-  a DLMS security suite this path does not implement; open an issue with the
-  logged byte.
+* **`telegrams are decrypted but NOT authenticated`** - normal for a meter that
+  was handed out with a decryption key only, which is the case for STOEN. The
+  AES-GCM tag covers the ciphertext plus additional authenticated data, and
+  DLMS defines that as `security byte || authentication key`; with no
+  authentication key the tag cannot be reproduced. The component probes the
+  layouts it knows on the first five telegrams, and once none of them matches it
+  keeps decrypting and says so once. If your operator did give you an
+  authentication key, set `authentication_key` and the tag is verified on every
+  telegram instead.
+* **`GCM tag verifies with additional data = ...`** - the layout was recognised;
+  from that point on a telegram with a bad tag is rejected.
+* **`Security byte 0x.. has no authentication tag`** - the meter uses a DLMS
+  security suite this path does not implement; open an issue with the logged
+  byte.
 * **`RX buffer full`** - the device cannot keep up with the meter. Raise
   `max_telegram_length` (the receive buffer is sized from it) or take load off
   the main loop.
@@ -279,8 +284,10 @@ dsmr_custom:
   water_mbus_id: 2          # Optional, default: 2. M-Bus channel ID for standard water meter.
   method: plain             # Optional, default: "plain". One of "plain", "encrypted"
                             # or "poland_stoen" (alias: "bajo"). See the STOEN section above.
-  gcm_tag_check: true       # Optional, default: true. Reject STOEN telegrams whose
-                            # AES-GCM tag does not verify. Arduino only.
+  authentication_key: "YOUR_32_CHAR_HEX_AUTH_KEY" # Optional. DLMS authentication key,
+                            # if your operator issued one on top of the decryption key.
+                            # Without it an authenticated frame is decrypted but its
+                            # AES-GCM tag cannot be verified.
   debug_udp_target: "192.168.1.5:37008" # Optional, ESP32 only. Mirror every raw and
                             # decrypted telegram to this host as UDP, for reverse
                             # engineering a dialect the logger cannot show.

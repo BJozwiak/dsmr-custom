@@ -6,6 +6,7 @@
 // ESP-IDF's MbedTLS uses hardware-accelerated esp_aes_gcm functions
 // Include the ESP32-specific header
 #include <aes/esp_aes_gcm.h>
+#include <mbedtls/gcm.h>
 
 extern "C" int dsmr_aes_gcm_decrypt(const unsigned char *key, size_t key_len,
                                     const unsigned char *iv, size_t iv_len,
@@ -40,6 +41,31 @@ extern "C" int dsmr_aes_gcm_decrypt(const unsigned char *key, size_t key_len,
   ret = esp_aes_gcm_auth_decrypt(&ctx, ciphertext_len, iv, iv_len, NULL, 0, tag,
                                  tag_len, ciphertext, output);
   ESP_LOGV("RET", "Decryption result: %d", ret);
+  esp_aes_gcm_free(&ctx);
+  return ret;
+}
+
+extern "C" int dsmr_aes_gcm_decrypt_with_tag(
+    const unsigned char *key, size_t key_len, const unsigned char *iv,
+    size_t iv_len, const unsigned char *aad, size_t aad_len,
+    const unsigned char *ciphertext, size_t ciphertext_len,
+    unsigned char *output, unsigned char *tag_out, size_t tag_len) {
+
+  esp_gcm_context ctx;
+  esp_aes_gcm_init(&ctx);
+
+  int ret = esp_aes_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, key, key_len * 8);
+  if (ret != 0) {
+    esp_aes_gcm_free(&ctx);
+    return ret;
+  }
+
+  // Decrypt and compute the tag instead of verifying it, so a mismatch leaves
+  // the plaintext intact for the caller to judge.
+  ret = esp_aes_gcm_crypt_and_tag(&ctx, MBEDTLS_GCM_DECRYPT, ciphertext_len, iv,
+                                  iv_len, aad, aad_len, ciphertext, output,
+                                  tag_len, tag_out);
+
   esp_aes_gcm_free(&ctx);
   return ret;
 }

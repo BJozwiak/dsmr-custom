@@ -45,7 +45,7 @@ dsmr_custom:
   crc_check: false
   method: poland_stoen
   decryption_key: "AABBCCDDEEFF00112233445566778899"
-  gcm_tag_check: false
+  authentication_key: "00112233445566778899AABBCCDDEEFF"
   debug_udp_target: "192.168.22.27:37008"
 
   custom_obis_sensors:

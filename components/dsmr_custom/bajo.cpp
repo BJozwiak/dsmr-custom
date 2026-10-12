@@ -43,6 +43,7 @@
 #include "dsmr.h"
 
 #include <cstring>
+#include <cstdlib>
 
 #ifdef USE_ARDUINO
 #include <AES.h>
@@ -456,12 +457,16 @@ bool Bajo::BAJO_decrypt_telegram() {
   ESP_LOGV(TAG, "Frame: system title %zu B, LEN_INFO %zu, security byte 0x%02X", system_title_length,
            len_info_from_frame, security_byte);
 
-  // Both crypto backends implement encrypted + authenticated frames (security
-  // byte 0x30), which is what these meters send. Anything else would need a
-  // different call sequence, so refuse it instead of misparsing the frame.
-  if ((security_byte & (SC_ENCRYPTED | SC_AUTHENTICATED)) != (SC_ENCRYPTED | SC_AUTHENTICATED)) {
-    ESP_LOGE(TAG,
-             "Security byte 0x%02X is not 'encrypted + authenticated'; method poland_stoen cannot handle that yet.",
+  // These meters send encrypted + authenticated frames (security byte 0x30).
+  // The frame layout below counts a 12 byte tag, so a frame without the
+  // authentication bit would be delimited differently.
+  if ((security_byte & SC_ENCRYPTED) == 0) {
+    ESP_LOGE(TAG, "Security byte 0x%02X says the body is not encrypted; method poland_stoen cannot handle that.",
+             security_byte);
+    return false;
+  }
+  if ((security_byte & SC_AUTHENTICATED) == 0) {
+    ESP_LOGE(TAG, "Security byte 0x%02X has no authentication tag; method poland_stoen cannot handle that yet.",
              security_byte);
     return false;
   }
@@ -500,44 +505,157 @@ bool Bajo::BAJO_decrypt_telegram() {
   uint8_t *ciphertext_ptr = &this->body_[ciphertext_offset];
   uint8_t *tag_ptr = &this->body_[ciphertext_offset + ciphertext_len];
 
-#ifdef USE_ARDUINO
-  // Arduino: use the rweather/Crypto library, which decrypts and verifies in
-  // two steps, so the plaintext is available even if the tag does not match.
-  GCM<AES128> gcmaes128;
-  gcmaes128.setKey(d->decryption_key_.data(), gcmaes128.keySize());
-  gcmaes128.setIV(iv, sizeof(iv));
-  gcmaes128.decrypt(reinterpret_cast<uint8_t *>(this->decrypted_body_), ciphertext_ptr, ciphertext_len);
+  // The tag covers the ciphertext plus some additional authenticated data.
+  // DLMS says that is "security control byte || authentication key", but these
+  // meters are handed out with a single key, so the layout is probed on the
+  // first few telegrams: whichever candidate reproduces the tag in the frame is
+  // used from then on, and if none does the telegram is decrypted but not
+  // authenticated. The plaintext is the same either way - the additional data
+  // only feeds the tag, never the keystream.
+  uint8_t aad_buffer[1 + 16];
+  uint8_t computed_tag[GCM_TAG_LENGTH];
 
-  if (!gcmaes128.checkTag(tag_ptr, gcm_tag_length)) {
-    if (this->gcm_tag_check_) {
-      ESP_LOGW(TAG, "Decryption failed: GCM tag mismatch (security byte 0x%02X, tag %02X %02X %02X %02X ...).",
-               security_byte, tag_ptr[0], tag_ptr[1], tag_ptr[2], tag_ptr[3]);
-      ESP_LOGW(TAG, "Set 'gcm_tag_check: false' if this meter authenticates over an authentication key "
-                    "(AAD = security byte || AK), which is not implemented yet.");
+  if (this->aad_mode_ == AadMode::UNKNOWN) {
+    static const AadMode CANDIDATES[] = {AadMode::SECURITY_AND_KEY, AadMode::SECURITY_BYTE, AadMode::NONE};
+    for (AadMode candidate : CANDIDATES) {
+      const size_t aad_len = this->BAJO_build_aad_(candidate, security_byte, aad_buffer, sizeof(aad_buffer));
+      if (aad_len == 0 && candidate != AadMode::NONE) {
+        continue;  // candidate needs an authentication key we do not have
+      }
+      if (!this->BAJO_decrypt_body_(ciphertext_ptr, ciphertext_len, iv, aad_buffer, aad_len, computed_tag,
+                                    gcm_tag_length)) {
+        return false;
+      }
+      if (memcmp(computed_tag, tag_ptr, gcm_tag_length) == 0) {
+        this->aad_mode_ = candidate;
+        ESP_LOGI(TAG, "GCM tag verifies with additional data = %s; authenticating every telegram from now on.",
+                 this->BAJO_aad_mode_str_(candidate));
+        break;
+      }
+    }
+    if (this->aad_mode_ == AadMode::UNKNOWN) {
+      if (--this->aad_probes_left_ == 0) {
+        this->aad_mode_ = AadMode::UNVERIFIABLE;
+        ESP_LOGW(TAG,
+                 "GCM tag does not match any known layout of the additional data (security byte 0x%02X); "
+                 "telegrams are decrypted but NOT authenticated.",
+                 security_byte);
+        ESP_LOGW(TAG, "This is expected for a meter handed out with a decryption key only. If the operator also "
+                      "gave you an authentication key, set 'authentication_key' to verify the tag.");
+      } else {
+        // Keep the plaintext of this telegram and probe again on the next one.
+        ESP_LOGD(TAG, "GCM tag did not match any candidate, %u probe(s) left.", this->aad_probes_left_);
+      }
+    }
+  } else {
+    const AadMode mode = this->aad_mode_ == AadMode::UNVERIFIABLE ? AadMode::NONE : this->aad_mode_;
+    const size_t aad_len = this->BAJO_build_aad_(mode, security_byte, aad_buffer, sizeof(aad_buffer));
+    if (!this->BAJO_decrypt_body_(ciphertext_ptr, ciphertext_len, iv, aad_buffer, aad_len, computed_tag,
+                                  gcm_tag_length)) {
       return false;
     }
-    ESP_LOGD(TAG, "GCM tag mismatch, accepted because gcm_tag_check is disabled.");
+    if (this->aad_mode_ != AadMode::UNVERIFIABLE && memcmp(computed_tag, tag_ptr, gcm_tag_length) != 0) {
+      ESP_LOGW(TAG, "Decryption failed: GCM tag mismatch (tag %02X %02X %02X %02X ..., expected %02X %02X %02X %02X ...).",
+               tag_ptr[0], tag_ptr[1], tag_ptr[2], tag_ptr[3], computed_tag[0], computed_tag[1], computed_tag[2],
+               computed_tag[3]);
+      return false;
+    }
   }
-#else
-  // ESP-IDF: the MbedTLS wrapper verifies the tag while decrypting and wipes
-  // the output on mismatch, so the tag check cannot be skipped here.
-  if (!this->gcm_tag_check_) {
-    ESP_LOGW(TAG, "gcm_tag_check: false is not supported on ESP-IDF, verifying the GCM tag anyway.");
-  }
-  const int decrypt_result =
-      dsmr_aes_gcm_decrypt(d->decryption_key_.data(), d->decryption_key_.size(), iv, sizeof(iv), ciphertext_ptr,
-                           ciphertext_len, tag_ptr, gcm_tag_length,
-                           reinterpret_cast<unsigned char *>(this->decrypted_body_));
-  if (decrypt_result != 0) {
-    ESP_LOGW(TAG, "Decryption failed: error code %d (security byte 0x%02X).", decrypt_result, security_byte);
-    return false;
-  }
-#endif
 
   this->decrypted_body_[ciphertext_len] = '\0';
   this->decrypted_body_bytes_ = ciphertext_len;
   ESP_LOGV(TAG, "Decryption successful, %zu bytes of plaintext.", this->decrypted_body_bytes_);
   return true;
+}
+
+size_t Bajo::BAJO_build_aad_(AadMode mode, uint8_t security_byte, uint8_t *buffer, size_t buffer_size) {
+  switch (mode) {
+  case AadMode::SECURITY_AND_KEY:
+    if (this->authentication_key_.empty() || buffer_size < 1 + this->authentication_key_.size()) {
+      return 0;
+    }
+    buffer[0] = security_byte;
+    memcpy(buffer + 1, this->authentication_key_.data(), this->authentication_key_.size());
+    return 1 + this->authentication_key_.size();
+  case AadMode::SECURITY_BYTE:
+    if (buffer_size < 1) {
+      return 0;
+    }
+    buffer[0] = security_byte;
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+const char *Bajo::BAJO_aad_mode_str_(AadMode mode) {
+  switch (mode) {
+  case AadMode::NONE:
+    return "none";
+  case AadMode::SECURITY_BYTE:
+    return "security byte";
+  case AadMode::SECURITY_AND_KEY:
+    return "security byte || authentication key";
+  case AadMode::UNVERIFIABLE:
+    return "unverifiable";
+  default:
+    return "unknown";
+  }
+}
+
+bool Bajo::BAJO_decrypt_body_(const uint8_t *ciphertext, size_t ciphertext_len, const uint8_t *iv,
+                              const uint8_t *aad, size_t aad_len, uint8_t *tag_out, size_t tag_len) {
+  Dsmr *d = static_cast<Dsmr *>(this);
+
+#ifdef USE_ARDUINO
+  // Arduino: rweather/Crypto decrypts and computes the tag in separate steps.
+  GCM<AES128> gcmaes128;
+  if (!gcmaes128.setKey(d->decryption_key_.data(), gcmaes128.keySize())) {
+    ESP_LOGE(TAG, "Could not set the AES-128 decryption key.");
+    return false;
+  }
+  if (!gcmaes128.setIV(iv, 12)) {
+    ESP_LOGE(TAG, "Could not set the AES-GCM initialisation vector.");
+    return false;
+  }
+  if (aad_len != 0) {
+    gcmaes128.addAuthData(aad, aad_len);
+  }
+  gcmaes128.decrypt(reinterpret_cast<uint8_t *>(this->decrypted_body_), ciphertext, ciphertext_len);
+  gcmaes128.computeTag(tag_out, tag_len);
+  return true;
+#else
+  // ESP-IDF: the MbedTLS wrapper returns the computed tag rather than wiping
+  // the plaintext, so an unverifiable tag does not cost us the telegram.
+  const int result = dsmr_aes_gcm_decrypt_with_tag(d->decryption_key_.data(), d->decryption_key_.size(), iv, 12,
+                                                   aad_len != 0 ? aad : nullptr, aad_len, ciphertext,
+                                                   ciphertext_len, reinterpret_cast<unsigned char *>(this->decrypted_body_),
+                                                   tag_out, tag_len);
+  if (result != 0) {
+    ESP_LOGW(TAG, "AES-GCM decryption failed: error code %d.", result);
+    return false;
+  }
+  return true;
+#endif
+}
+
+void Bajo::set_authentication_key(const std::string &key_hex) {
+  this->authentication_key_.clear();
+  this->aad_mode_ = AadMode::UNKNOWN;
+  if (key_hex.empty()) {
+    return;
+  }
+  if (key_hex.length() != 32) {
+    ESP_LOGE(TAG, "Authentication key must be 32 hexadecimal characters long (is %zu), ignoring it.",
+             key_hex.length());
+    return;
+  }
+  this->authentication_key_.assign(16, 0);
+  for (size_t i = 0; i < 16; i++) {
+    const char pair[3] = {key_hex[i * 2], key_hex[i * 2 + 1], '\0'};
+    this->authentication_key_[i] = static_cast<uint8_t>(strtoul(pair, nullptr, 16));
+  }
+  ESP_LOGI(TAG, "Authentication key is set.");
 }
 
 }  // namespace dsmr_custom

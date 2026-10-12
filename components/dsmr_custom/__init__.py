@@ -65,7 +65,7 @@ CONF_CRC_CHECK = "crc_check"
 CONF_GAS_MBUS_ID = "gas_mbus_id"
 CONF_WATER_MBUS_ID = "water_mbus_id"
 CONF_METHOD = "method"
-CONF_GCM_TAG_CHECK = "gcm_tag_check"
+CONF_AUTHENTICATION_KEY = "authentication_key"
 CONF_DEBUG_UDP_TARGET = "debug_udp_target"
 CONF_DEBUG_UDP_HOST = "host"
 
@@ -143,7 +143,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_GAS_MBUS_ID, default=1): cv.int_range(min=0, max=255),
         cv.Optional(CONF_WATER_MBUS_ID, default=2): cv.int_range(min=0, max=255),
         cv.Optional(CONF_METHOD, default="plain"): cv.enum(METHODS, lower=True),
-        cv.Optional(CONF_GCM_TAG_CHECK, default=True): cv.boolean,
+        cv.Optional(CONF_AUTHENTICATION_KEY): _validate_key,
         cv.Optional(CONF_DEBUG_UDP_TARGET): cv.All(
             cv.only_on_esp32, _validate_debug_udp_target
         ),
@@ -186,7 +186,8 @@ async def to_code(config):
     cg.add(var.set_max_telegram_length(config[CONF_MAX_TELEGRAM_LENGTH]))
     cg.add(var.set_receive_timeout(config[CONF_RECEIVE_TIMEOUT].total_milliseconds))
     cg.add(var.set_method(config[CONF_METHOD]))
-    cg.add(var.set_gcm_tag_check(config[CONF_GCM_TAG_CHECK]))
+    if CONF_AUTHENTICATION_KEY in config:
+        cg.add(var.set_authentication_key(config[CONF_AUTHENTICATION_KEY]))
 
     if CONF_DEBUG_UDP_TARGET in config:
         target = config[CONF_DEBUG_UDP_TARGET]

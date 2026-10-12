@@ -36,6 +36,7 @@
     #include <cstddef>
     #include <cstdint>
     #include <string>
+    #include <vector>
 
     // The UDP telegram dump is a debugging aid for reverse engineering an
     // unknown P1 dialect: it mirrors the raw and the decrypted telegram to a
@@ -80,13 +81,26 @@
                     this->debug_udp_port_ = port;
                 }
 
-                /// Reject telegrams whose AES-GCM tag does not verify (Arduino only;
-                /// the ESP-IDF backend always verifies while decrypting).
-                void set_gcm_tag_check(bool check) { this->gcm_tag_check_ = check; }
+                /// Optional DLMS authentication key (32 hex characters). Only needed
+                /// if the meter authenticates over one; without it the GCM tag of an
+                /// authenticated frame cannot be verified.
+                void set_authentication_key(const std::string &key_hex);
 
                 Method get_method() const { return this->method_; }
 
             protected:
+                /// Which additional authenticated data this meter's GCM tag covers.
+                /// DLMS specifies "security control byte || authentication key", but
+                /// meters that ship a single key leave it unverifiable, so the layout
+                /// is probed on the first telegrams instead of assumed.
+                enum class AadMode : uint8_t {
+                    UNKNOWN,          ///< not probed yet
+                    NONE,             ///< tag covers the ciphertext only
+                    SECURITY_BYTE,    ///< tag covers the security control byte
+                    SECURITY_AND_KEY, ///< tag covers security control byte || auth key
+                    UNVERIFIABLE,     ///< no candidate matched; decrypt without verifying
+                };
+
                 void BAJO_setup();
                 void BAJO_reset_telegram();
                 /// Decrypt body_ into decrypted_body_. Returns false when the frame
@@ -96,9 +110,19 @@
                 void BAJO_process_telegram();
                 void BAJO_send_udp_telegram(const void *data, size_t len);
                 void BAJO_setup_debug_udp_();
+                /// Decrypt into decrypted_body_ and report the tag the ciphertext
+                /// authenticates to under @p aad. False means a crypto error.
+                bool BAJO_decrypt_body_(const uint8_t *ciphertext, size_t ciphertext_len, const uint8_t *iv,
+                                        const uint8_t *aad, size_t aad_len, uint8_t *tag_out, size_t tag_len);
+                /// Build the additional authenticated data for @p mode.
+                size_t BAJO_build_aad_(AadMode mode, uint8_t security_byte, uint8_t *buffer, size_t buffer_size);
+                const char *BAJO_aad_mode_str_(AadMode mode);
 
                 Method method_{Method::PLAIN};
-                bool gcm_tag_check_{true};
+
+                AadMode aad_mode_{AadMode::UNKNOWN};
+                uint8_t aad_probes_left_{5};
+                std::vector<uint8_t> authentication_key_{};
 
                 uint32_t last_receive_time_{0};
                 uint32_t start_milis_{0};

@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.2-stoen] - 2026-10-12
+
+### Fixed
+- **Field test on ESP-IDF: telegrams were rejected with `error code -18`.** That
+  is `MBEDTLS_ERR_GCM_AUTH_FAILED`: the frame is delimited correctly, but the
+  AES-GCM tag does not match when the additional authenticated data is empty.
+  STOEN hands out a decryption key only, and DLMS computes the tag over
+  `security control byte || authentication key`, so the tag is not reproducible
+  with one key. On Arduino this went unnoticed because `checkTag(tag, 0)` passes
+  trivially; on ESP-IDF MbedTLS verifies and wipes the plaintext, which took the
+  meter offline.
+  The component now decrypts with a call that returns the computed tag instead
+  of discarding the plaintext, probes the additional-data layouts it knows on
+  the first five telegrams, and then either authenticates every telegram with
+  the layout that matched or keeps decrypting unauthenticated and says so once.
+
+### Added
+- `authentication_key` option: with it the tag is verified properly.
+
+### Removed
+- `gcm_tag_check`, which the probing makes unnecessary.
+
 ## [1.2.1-stoen] - 2026-10-12
 
 ### Fixed

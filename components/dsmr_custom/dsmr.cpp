@@ -862,7 +862,8 @@ void Dsmr::dump_config() {
   switch (this->method_) {
   case Method::POLAND_STOEN:
     ESP_LOGCONFIG(TAG, "  Method: poland_stoen (ELGAMA G350 / typ G35)");
-    ESP_LOGCONFIG(TAG, "  GCM Tag Check: %s", YESNO(this->gcm_tag_check_));
+    ESP_LOGCONFIG(TAG, "  Authentication Key: %s",
+                  this->authentication_key_.empty() ? "not set" : "set");
     break;
   case Method::ENCRYPTED:
     ESP_LOGCONFIG(TAG, "  Method: encrypted");
