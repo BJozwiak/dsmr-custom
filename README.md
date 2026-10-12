@@ -4,7 +4,72 @@
 
 **Modification:** Work with Polish STOEN DSMR P1 protocol
 
-**ESPHome Compatibility:** 2025.5.x or newer
+**ESPHome Compatibility:** 2025.5.x or newer (including 2026.1+)
+
+**Targets:** ESP8266 and ESP32 on Arduino, ESP32 family on ESP-IDF
+
+## Polish STOEN meters (ELGAMA G350 / typ G35)
+
+STOEN programs these meters to push a complete telegram every second, with an
+AES-GCM encrypted body wrapped in a plain header and a plain `!CRC` footer.
+That does not fit the byte-by-byte receive loop of the upstream component, so
+this fork adds a `method` option that switches to a buffered receive path:
+everything the UART has is drained into one buffer and parsed once the line
+has been quiet for `receive_timeout`, which takes about 5 ms on an ESP32.
+
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/BJozwiak/dsmr-custom
+      ref: BAJO_STOEN
+    components: [ dsmr_custom ]
+
+dsmr_custom:
+  id: dsmr_hub
+  uart_id: uart_0
+  method: poland_stoen          # the STOEN receive + decrypt path
+  decryption_key: !secret meter_key
+  max_telegram_length: 1700
+  crc_check: false              # the footer CRC covers the encrypted frame
+  custom_obis_sensors:
+    - code: "1-0:1.8.0"
+      name: "Total Energy Import"
+      type: sensor
+      unit_of_measurement: "kWh"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+```
+
+With `method: poland_stoen` the values come from `custom_obis_sensors` only:
+the reassembled telegram carries a CRC over the *encrypted* frame, so the
+vendored P1 parser is skipped for this dialect and the standard DSMR sensors
+stay unpublished. Every other `method` keeps the upstream behaviour, standard
+sensors included.
+
+The meter needs a `uart:` with an inverted, pulled-up RX pin and an
+`rx_buffer_size` of at least the telegram length; see
+`test-configs/p1-dongle_Polish_STOEN_ELGAMA350_G35.yaml` for a complete,
+working device configuration including a display.
+
+### Troubleshooting the STOEN path
+
+* **`Decryption failed: GCM tag mismatch`** - the body decrypts but does not
+  authenticate. Some meters authenticate over an authentication key, where the
+  additional data is `security byte || AK`; that is not implemented yet. Set
+  `gcm_tag_check: false` to accept the plaintext anyway (Arduino only; the
+  ESP-IDF backend always verifies) and please report the security byte from the
+  log so proper support can be added.
+* **`Security byte 0x.. is not 'encrypted + authenticated'`** - the meter uses
+  a DLMS security suite this path does not implement; open an issue with the
+  logged byte.
+* **`RX buffer full`** - the device cannot keep up with the meter. Raise
+  `max_telegram_length` (the receive buffer is sized from it) or take load off
+  the main loop.
+* **Nothing at all** - set `logger: level: VERY_VERBOSE` for the
+  `BAJO dsmr_custom` tag, or dump the raw telegram to a PC with
+  `debug_udp_target` (see below) and inspect it with `nc -ul 37008`.
 
 ## Framework Support
 
@@ -212,6 +277,13 @@ dsmr_custom:
   request_interval: "10s"   # Optional, default: "0s". Interval for active data requests.
   gas_mbus_id: 1            # Optional, default: 1. M-Bus channel ID for standard gas meter.
   water_mbus_id: 2          # Optional, default: 2. M-Bus channel ID for standard water meter.
+  method: plain             # Optional, default: "plain". One of "plain", "encrypted"
+                            # or "poland_stoen" (alias: "bajo"). See the STOEN section above.
+  gcm_tag_check: true       # Optional, default: true. Reject STOEN telegrams whose
+                            # AES-GCM tag does not verify. Arduino only.
+  debug_udp_target: "192.168.1.5:37008" # Optional, ESP32 only. Mirror every raw and
+                            # decrypted telegram to this host as UDP, for reverse
+                            # engineering a dialect the logger cannot show.
 ```
 
 #### User-Defined OBIS Sensors (`custom_obis_sensors:`)

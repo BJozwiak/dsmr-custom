@@ -3,7 +3,7 @@ name: Compile Test
 on:
   pull_request:
   push:
-    branches: [main, dev]
+    branches: [main, dev, BAJO_STOEN]
 
 jobs:
   compile:
@@ -15,6 +15,9 @@ jobs:
           - test-arduino-esp8266.yaml
           - test-espidf-esp32.yaml
           - test-espidf-esp32c6.yaml
+          - test-stoen-arduino-esp8266.yaml
+          - test-stoen-arduino-esp32.yaml
+          - test-stoen-espidf-esp32.yaml
     
     steps:
       - name: Checkout code

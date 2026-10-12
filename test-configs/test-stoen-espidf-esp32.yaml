@@ -1,0 +1,63 @@
+# Polish STOEN dialect on ESP32 (ESP-IDF), including the UDP telegram dump.
+substitutions:
+  device_name: test-stoen-espidf-esp32
+
+esphome:
+  name: ${device_name}
+  name_add_mac_suffix: false
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: "test"
+  password: "test12345678"
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI="
+
+ota:
+  platform: esphome
+
+uart:
+  id: uart_bus
+  baud_rate: 115200
+  rx_pin: GPIO25
+  rx_buffer_size: 1700
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [ dsmr_custom ]
+    refresh: 0s
+
+dsmr_custom:
+  id: dsmr_hub
+  uart_id: uart_bus
+  max_telegram_length: 1700
+  crc_check: false
+  method: poland_stoen
+  decryption_key: "AABBCCDDEEFF00112233445566778899"
+  debug_udp_target: "192.168.22.27:37008"
+
+  custom_obis_sensors:
+    - code: "1-0:1.8.0"
+      name: "Total Energy Import"
+      type: sensor
+      unit_of_measurement: "kWh"
+      accuracy_decimals: 3
+      device_class: energy
+      state_class: total_increasing
+
+text_sensor:
+  - platform: dsmr_custom
+    dsmr_custom_hub_id: dsmr_hub
+    identification:
+      name: "P1 Telegram Header"
