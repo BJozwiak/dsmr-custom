@@ -176,6 +176,10 @@ dsmr_custom:
       state_class: total_increasing
 ```
 
+`ref: BAJO_STOEN` follows this branch as it moves. To stay on a fixed
+revision use the tag instead - `ref: v1.2.1-stoen` is the state verified on
+the meter and described under [Verified on](#verified-on).
+
 With `method: poland_stoen` the values come from `custom_obis_sensors` only:
 the reassembled telegram carries a CRC over the *encrypted* frame, so the
 vendored P1 parser is skipped for this dialect and the standard DSMR sensors
