@@ -396,7 +396,8 @@ void Bajo::BAJO_process_telegram() {
       d->telegram_[d->bytes_read_] = '\0';
 
       this->BAJO_send_udp_telegram(d->telegram_, d->bytes_read_);
-      ESP_LOGD(TAG, "Telegram total bytes %zu, process time %u ms", d->bytes_read_, millis() - this->start_milis_);
+      ESP_LOGD(TAG, "Telegram total bytes %zu, process time %lu ms", d->bytes_read_,
+               (unsigned long) (millis() - this->start_milis_));
 
       d->status_clear_warning();
       d->parse_telegram();

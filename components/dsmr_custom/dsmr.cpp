@@ -219,8 +219,8 @@ bool Dsmr::ready_to_request_data_() {
       if (discarded_bytes > 0) {
         ESP_LOGVV(
             TAG,
-            "Discarded %u bytes from UART buffer while not actively reading.",
-            discarded_bytes);
+            "Discarded %lu bytes from UART buffer while not actively reading.",
+            (unsigned long) discarded_bytes);
       }
     }
   }
@@ -254,7 +254,7 @@ bool Dsmr::available_within_timeout_() {
       if (this->requesting_data_) {
         ESP_LOGV(TAG,
                  "Timeout waiting for telegram header (since last request: "
-                 "%ums > %ums).",
+                 "%lums > %lums).",
                  (unsigned long)(millis() - this->last_request_time_),
                  (unsigned long)this->receive_timeout_);
       }
@@ -290,7 +290,7 @@ bool Dsmr::available_within_timeout_() {
   if (this->receive_timeout_reached_()) {
     ESP_LOGW(TAG,
              "Timeout while reading data for telegram (header_found_: %s, "
-             "bytes_read_: %zu, last_read_ago: %ums > %ums)",
+             "bytes_read_: %zu, last_read_ago: %lums > %lums)",
              YESNO(this->header_found_), this->bytes_read_,
              (unsigned long)(millis() - this->last_read_time_),
              (unsigned long)this->receive_timeout_);
