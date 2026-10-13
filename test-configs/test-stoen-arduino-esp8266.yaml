@@ -1,6 +1,7 @@
 # Polish STOEN dialect on ESP8266 (Arduino). The STOEN receive path has no
 # ESP32-only dependencies, so it has to build here too; debug_udp_target is
-# the one option that is not available on this target.
+# the one option that is not available on this target. RAM is the real limit
+# here, not the code size - see "RAM on ESP8266" in the README.
 substitutions:
   device_name: test-stoen-esp8266
 

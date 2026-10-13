@@ -13,6 +13,10 @@ component broken.
   and pulled in `<sys/socket.h>`, `<netdb.h>` and FreeRTOS, none of which exist
   on ESP8266. It is now the optional `debug_udp_target: "<ip>:<port>"`, compiled
   only on ESP32, so `method: poland_stoen` builds and runs on ESP8266 too.
+  ESP8266 is tight on RAM for this: the buffers are now allocated once with
+  the result checked, so the component marks itself failed with a log line
+  instead of crashing when they do not fit, and the README says what to trim
+  and which reboot looks like heap and which looks like stack exhaustion.
 - `authentication_key` option. STOEN issues two keys but only the decryption
   key takes part in reading the telegram, so an authenticated frame (security
   byte `0x30`) decrypts while its AES-GCM tag stays unverifiable. The component

@@ -72,16 +72,62 @@ Polish STOEN dialect and fixes what that support originally broke.
 |---|---|---|---|
 | ESP32 | ESP-IDF | STOEN, real meter | **running on an ELGAMA G350 / typ G35** |
 | ESP32 | Arduino | STOEN, real meter | earlier revision of this branch ran here for months; this revision is build-tested only |
-| ESP8266 `d1_mini` | Arduino | `test-stoen-arduino-esp8266.yaml` | builds and links; not yet run on a meter |
+| ESP8266 `d1_mini` | Arduino | `test-stoen-arduino-esp8266.yaml` | builds and links; not yet run on a meter, and tight on RAM (see below) |
 | ESP32 | Arduino | `test-stoen-arduino-esp32.yaml` | builds and links |
 | ESP32 | ESP-IDF | `test-stoen-espidf-esp32.yaml` | builds and links |
 | ESP8266 `d1_mini` | Arduino | `test-arduino-esp8266.yaml` (plain DSMR) | builds and links |
 | ESP32 | ESP-IDF | `test-espidf-esp32.yaml` (plain DSMR) | builds and links |
 | ESP32-C6 | ESP-IDF | `test-espidf-esp32c6.yaml` (plain DSMR) | builds and links |
 
-Everything above is built with ESPHome 2026.9.1. On ESP8266 the STOEN buffers
-take about 7 kB of heap at `max_telegram_length: 1700`, on top of 31 kB of
-static RAM, so leave room for whatever else the device runs.
+Everything above is built with ESPHome 2026.9.1.
+
+### RAM on ESP8266
+
+The STOEN path builds and links on ESP8266, but the chip has 80 kB of RAM in
+total and no PSRAM, so a firmware that fits can still misbehave on the meter.
+At `max_telegram_length: 1700` this component allocates about 7 kB of heap in
+`setup()` - receive buffer, encrypted body, decrypted body and the telegram
+itself - on top of the 31 kB of static RAM the firmware already uses, and a
+`uart` with `rx_buffer_size: 1700` adds another 1.7 kB. What is left has to
+carry the WiFi stack, the API connection and every other component on the
+device. Two failure modes follow from that, and neither of them is a
+decryption problem:
+
+* **Not enough heap.** The buffers are allocated once, at startup. If that
+  fails the component logs `Failed to allocate STOEN telegram buffers` and
+  marks itself failed instead of crashing, so the cause is in the log. A
+  shortage later is less polite: WiFi and the API allocate as they go, and as
+  free heap approaches 10 kB the device starts dropping its connection and
+  rebooting.
+* **Not enough stack.** The Arduino sketch runs on a ~4 kB stack on ESP8266,
+  shared by every component in the loop. A reboot with `Fatal exception` or
+  `Stack smashing protect failure!` in the boot log, always while a telegram
+  is being handled, is that and not the crypto.
+
+If the device reboots or goes unavailable, in this order:
+
+1. Lower `max_telegram_length` to just above the longest telegram your meter
+   actually sends, and set the uart `rx_buffer_size` to the same value. Every
+   100 bytes taken off gives back about 400 bytes of heap, because four
+   buffers are sized from it.
+2. Drop what the device does not need - `web_server` and `captive_portal` are
+   the expensive ones - and keep the logger at `INFO` or `DEBUG`. At
+   `VERY_VERBOSE` the component prints whole telegrams through the log
+   formatter, which is a reliable way to run out of stack here.
+3. Watch the free heap for a day before trusting it:
+
+   ```yaml
+   debug:
+
+   sensor:
+     - platform: debug
+       free:
+         name: "Free heap"
+   ```
+
+If it still reboots, the component is simply at the edge of what an ESP8266
+can host - an ESP32 has roughly four times the RAM and is the target this
+branch is verified on.
 
 ### Keys
 
