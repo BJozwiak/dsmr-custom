@@ -16,7 +16,10 @@ wifi:
   password: "test12345678"
 
 logger:
-  level: INFO
+  # VERY_VERBOSE so that every ESP_LOGx in the component is actually
+  # compiled: ESPHome drops log calls above the configured level, and a
+  # format string that is never compiled is never checked either.
+  level: VERY_VERBOSE
 
 api:
   encryption:

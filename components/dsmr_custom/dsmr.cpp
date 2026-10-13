@@ -840,16 +840,16 @@ void Dsmr::dump_config() {
   ESP_LOGCONFIG(TAG, "  UART Bus: Configured (details in UART component logs)");
   ESP_LOGCONFIG(TAG, "  Max Telegram Length: %zu bytes",
                 this->max_telegram_len_);
-  ESP_LOGCONFIG(TAG, "  Receive Timeout: %u ms", this->receive_timeout_);
+  ESP_LOGCONFIG(TAG, "  Receive Timeout: %lu ms", (unsigned long) this->receive_timeout_);
   ESP_LOGCONFIG(TAG, "  CRC Check Enabled: %s", YESNO(this->crc_check_));
   if (this->request_pin_ != nullptr) {
     LOG_PIN("  Request Pin: ", this->request_pin_);
-    ESP_LOGCONFIG(TAG, "  Request Interval: %u ms", this->request_interval_);
+    ESP_LOGCONFIG(TAG, "  Request Interval: %lu ms", (unsigned long) this->request_interval_);
   } else {
     ESP_LOGCONFIG(TAG, "  Request Pin: Not configured");
     if (this->request_interval_ > 0) {
-      ESP_LOGCONFIG(TAG, "  Passive Read Interval: %u ms",
-                    this->request_interval_);
+      ESP_LOGCONFIG(TAG, "  Passive Read Interval: %lu ms",
+                    (unsigned long) this->request_interval_);
     } else {
       ESP_LOGCONFIG(TAG, "  Passive Read Interval: Continuous attempt");
     }
