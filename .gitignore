@@ -7,3 +7,15 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 *.log
+
+# Python bytecode (ESPHome regenerates this)
+__pycache__/
+*.py[cod]
+
+# Editor / IDE local settings
+.vscode/
+.idea/
+
+# ESPHome build output
+.esphome/
+secrets.yaml

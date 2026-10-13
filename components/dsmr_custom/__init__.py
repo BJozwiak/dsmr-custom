@@ -133,10 +133,11 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID], uart_var, config[CONF_CRC_CHECK])
     await cg.register_component(var, config)
 
-    # Platform-specific crypto library configuration
+    # Which AES-GCM backend to link follows the target framework, not the
+    # chip: Arduino builds (ESP8266 as well as ESP32) pull in rweather/Crypto,
+    # ESP-IDF builds use the MbedTLS that already ships with the SDK.
     from esphome.core import CORE
-    if not CORE.using_esp_idf:
-        # Arduino: Use rweather/Crypto library
+    if CORE.target_framework == "arduino":
         cg.add_library("rweather/Crypto", "0.4.0")
     else:
         # ESP-IDF: Uses system MbedTLS - configure linker via extra_scripts
