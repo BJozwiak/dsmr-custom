@@ -75,7 +75,8 @@ component broken.
   extended `.gitignore` so they do not come back.
 
 ### Verified on
-- ESP32 / ESP-IDF, `method: poland_stoen`, running on an ELGAMA G350 typ G35.
+- ESP32 / ESP-IDF, `method: poland_stoen`, running on an ELGAMA G350 typ G35
+  without interruption since 2026-10-12.
 - ESP8266 `d1_mini` / Arduino, ESP32 / Arduino, ESP32 / ESP-IDF and
   ESP32-C6 / ESP-IDF: built and linked with ESPHome 2026.9.1, with and without
   the STOEN path.

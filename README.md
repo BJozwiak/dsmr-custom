@@ -70,7 +70,7 @@ Polish STOEN dialect and fixes what that support originally broke.
 
 | Target | Framework | Configuration | Status |
 |---|---|---|---|
-| ESP32 | ESP-IDF | STOEN, real meter | **running on an ELGAMA G350 / typ G35** |
+| ESP32 | ESP-IDF | STOEN, real meter | **running on an ELGAMA G350 / typ G35**, uninterrupted since 2026-10-12 |
 | ESP32 | Arduino | STOEN, real meter | earlier revision of this branch ran here for months; this revision is build-tested only |
 | ESP8266 `d1_mini` | Arduino | `test-stoen-arduino-esp8266.yaml` | builds and links; not yet run on a meter, and tight on RAM (see below) |
 | ESP32 | Arduino | `test-stoen-arduino-esp32.yaml` | builds and links |
