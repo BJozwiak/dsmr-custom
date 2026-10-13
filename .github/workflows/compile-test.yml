@@ -53,5 +53,9 @@ jobs:
           path: |
             test-configs/.esphome/build/**/firmware*.bin
             test-configs/.esphome/build/**/firmware.elf
+          # .esphome is a dot-directory and upload-artifact@v4 skips hidden
+          # paths unless told otherwise, which is why this step used to
+          # upload nothing at all.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
