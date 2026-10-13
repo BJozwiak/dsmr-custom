@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main, dev, BAJO_STOEN]
+  workflow_dispatch:
 
 jobs:
   compile:
@@ -50,6 +51,7 @@ jobs:
         with:
           name: firmware-${{ matrix.test-config }}
           path: |
-            .esphome/build/**/firmware.bin
-            .esphome/build/**/firmware.elf
+            test-configs/.esphome/build/**/firmware*.bin
+            test-configs/.esphome/build/**/firmware.elf
+          if-no-files-found: error
           retention-days: 7
